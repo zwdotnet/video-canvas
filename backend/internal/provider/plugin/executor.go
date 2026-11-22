@@ -65,6 +65,9 @@ type Options struct {
 	IPAllowed func(net.IP) bool
 	Resolver  netguard.Resolver
 	Dial      func(context.Context, string, string) (net.Conn, error)
+
+	// LocalAPIOrigins 仅允许渠道访问部署端显式配置的局域网 API。
+	LocalAPIOrigins netguard.LocalAPIOrigins
 }
 
 func (o *Options) applyDefaults() {
@@ -106,11 +109,9 @@ type Executor struct {
 	loader   *loader
 	limiters *limiterSet
 
-	// 出站 Transport 懒创建并缓存，所有渠道共用同一个连接池。
-	// SSRF 防护不受影响：协议与用户名密码在每次请求的 hostGuardRT 里检查（http.Client 每次新建，很轻），
-	// 内网拦截在共享 Transport 的 DialContext 里对每条新连接执行（按 DNS 解析结果判断，防 rebinding）。
+	// 出站 Transport 懒创建并缓存，公网与已配置的本地 API 使用独立连接池。
 	transportMu sync.Mutex
-	outbound    *http.Transport
+	outbound    *netguard.APITransport
 }
 
 var (
@@ -305,7 +306,7 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 	if base, err := url.Parse(snap.Channel.BaseURL); err != nil || base.Hostname() == "" {
 		return nil, terminalErr(codeInvalidSnapshot, fmt.Sprintf("渠道 %s 的 base_url 不合法", snap.Channel.Key), err)
 	}
-	// 结果文件可以放在任意公网域名：这里只检查协议与用户名密码，内网由拨号时的 IP 校验拦截
+	// 结果文件可来自公网；本地地址须与部署端放行的渠道来源一致。
 	if err := netguard.CheckURLScheme(u.Scheme, u.Hostname(), u.User != nil); err != nil {
 		return nil, &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, func(s string) string { return s })}
 	}
@@ -314,7 +315,7 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 		return nil, retryableErr(codeDownloadFailed, "构造产物下载请求失败", err)
 	}
 	req.Header.Set("User-Agent", defaultUserAgent)
-	client := e.client()
+	client := e.client(snap.Channel.BaseURL)
 	// 超时 context 必须活到调用方把 Body 读完：Body 绑在它上面，Download 返回时就取消会让后续读取全部
 	// 报 context canceled。所以不能 defer cancel，改由 Body.Close 取消；出错的分支自己取消。
 	dctx, cancel := context.WithTimeout(ctx, e.opts.DownloadTimeout)
@@ -584,7 +585,7 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		return hookResponse{}, err
 	}
 	defer cleanup()
-	resp, err := o.e.client().Do(req)
+	resp, err := o.e.client(o.rt.Channel.BaseURL).Do(req)
 	if err != nil {
 		if sent.Load() {
 			return hookResponse{}, &provider.Error{Class: provider.ClassSubmitUnknown, Code: string(provider.ClassSubmitUnknown), Message: "图片提交结果未知，请核对上游计费", Cause: redactError(err, o.red.str)}
@@ -876,19 +877,18 @@ func (e *Executor) limit(ctx context.Context, ch provider.ChannelSnapshot) (func
 	return e.limiters.get(ch.Key, ch.RateLimit.RPS, ch.RateLimit.MaxConcurrency).acquire(ctx)
 }
 
-// client 返回受防护的客户端：不限域名，只允许 http(s)、不带用户名密码；底层 Transport 复用，内网在拨号时拦截。
-func (e *Executor) client() *http.Client {
-	return netguard.NewClient(e.transport(), nil, e.opts.MaxRedirects)
+// client 返回受防护的客户端，已配置的本地 API 仅供来源一致的渠道使用。
+func (e *Executor) client(baseURL string) *http.Client {
+	return netguard.NewClient(e.transport().ForChannel(baseURL), nil, e.opts.MaxRedirects)
 }
 
 // transport 懒创建并缓存带 SSRF 拨号校验的 Transport。
-func (e *Executor) transport() *http.Transport {
+func (e *Executor) transport() *netguard.APITransport {
 	e.transportMu.Lock()
 	defer e.transportMu.Unlock()
 	if e.outbound == nil {
-		cfg := &netguard.Config{IPAllowed: e.opts.IPAllowed, Resolver: e.opts.Resolver, Dial: e.opts.Dial, MaxRedirects: e.opts.MaxRedirects}
-		cfg.ApplyDefaults()
-		e.outbound = netguard.NewTransport(cfg)
+		cfg := netguard.Config{IPAllowed: e.opts.IPAllowed, Resolver: e.opts.Resolver, Dial: e.opts.Dial}
+		e.outbound = netguard.NewAPITransport(cfg, e.opts.LocalAPIOrigins)
 	}
 	return e.outbound
 }

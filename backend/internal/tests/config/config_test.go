@@ -70,6 +70,29 @@ func TestLoad_AllowFakeIP(t *testing.T) {
 	}
 }
 
+func TestLoad_LocalAPIOrigins(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{
+		{"http://192.168.10.20:3425, https://10.0.0.20", true},
+		{"http://192.168.10.20:3425/v1", false},
+		{"http://169.254.169.254", false},
+		{"http://api.local:3425", false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("APP_AI_LOCAL_API_ORIGINS", tc.value)
+			_, err := Load("../../../configs/config.yaml")
+			if tc.valid && err != nil {
+				t.Fatal(err)
+			}
+			if !tc.valid && (err == nil || !strings.Contains(err.Error(), "ai.local_api_origins")) {
+				t.Fatalf("无效地址应被拒绝并标出配置项，实际错误：%v", err)
+			}
+		})
+	}
+}
+
 // update：检查新版本默认开、默认仓库；老部署挂载的配置文件里没有 update 段也一样；环境变量能关闭。
 func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
 	cfg, err := Load("../../../configs/config.yaml")

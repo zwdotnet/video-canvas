@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"video-canvas/internal/provider/netguard"
 )
 
 type Config struct {
@@ -184,10 +186,12 @@ type AI struct {
 	SecretKey string `mapstructure:"secret_key"` // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
 	// AllowFakeIP 放行 198.18.0.0/15（代理工具 Fake-IP 模式给域名分配的假地址），其余内网照拦。
 	// 只给开发机用：本机开了 Fake-IP 的代理时，所有域名都解析到这个网段，不放行连不上任何外部接口。默认关，线上不要开。
-	AllowFakeIP  bool         `mapstructure:"allow_fake_ip"`
-	Worker       Worker       `mapstructure:"worker"`
-	Queue        Queue        `mapstructure:"queue"`
-	PluginRunner PluginRunner `mapstructure:"plugin_runner"`
+	AllowFakeIP bool `mapstructure:"allow_fake_ip"`
+	// LocalAPIOrigins 从 ai.local_api_origins 读取，启动时校验后交给模型渠道传输层。
+	LocalAPIOrigins netguard.LocalAPIOrigins `mapstructure:"-"`
+	Worker          Worker                   `mapstructure:"worker"`
+	Queue           Queue                    `mapstructure:"queue"`
+	PluginRunner    PluginRunner             `mapstructure:"plugin_runner"`
 }
 
 // PluginRunner 是 plugin-runner 进程（协议插件的沙箱执行环境）的部署与预算配置。
@@ -254,6 +258,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
+	v.SetDefault("ai.local_api_origins", "")
 	v.SetDefault("ai.queue.max_concurrency", 64)
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
@@ -284,6 +289,15 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	rawOrigins, ok := v.Get("ai.local_api_origins").(string)
+	if !ok {
+		return nil, fmt.Errorf("ai.local_api_origins 必须是逗号分隔的字符串")
+	}
+	origins, err := netguard.ParseLocalAPIOrigins(rawOrigins)
+	if err != nil {
+		return nil, fmt.Errorf("ai.local_api_origins: %w", err)
+	}
+	cfg.AI.LocalAPIOrigins = origins
 	cfg.Agent = cfg.Agent.WithDefaults()
 	if err := cfg.Agent.Validate(); err != nil {
 		return nil, err

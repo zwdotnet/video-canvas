@@ -45,6 +45,7 @@ services:
       APP_AI_SECRET_KEY: "video-canvas-dev-ai-secret"
       # 开发机常开着代理工具的 Fake-IP 模式（所有域名被解析到 198.18.0.0/15），不放行就连不上任何外部接口；线上不要设
       APP_AI_ALLOW_FAKE_IP: "true"
+      APP_AI_LOCAL_API_ORIGINS: ${APP_AI_LOCAL_API_ORIGINS:-}
       APP_STORAGE_LOCAL_DIR: "/app/data/assets"
       # 画布 Agent：默认开启，需要 AGENT_SERVICE_TOKEN（见下）。不用 Agent：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}

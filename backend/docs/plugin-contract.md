@@ -119,7 +119,7 @@ meta: {
 **宿主对请求描述的校验**（任一不通过就是 `terminal` + 插件级失败，不发请求）：
 
 - `method` 合法；`path`/`url` 二选一；`path` 以 `/` 开头、不以 `//` 开头、不含 `..` 段、拼出来的主机必须仍是 `base_url` 的主机与协议；
-- `url` 只允许 http/https、不含用户名密码、主机不限（内网地址在拨号时一律拦截，没有“允许访问内网”的例外）；
+- `url` 只允许 http/https、不含用户名密码。内网请求须与渠道 Base URL 同协议、IP、端口，且该来源须在部署端的 `APP_AI_LOCAL_API_ORIGINS` 中；
 - `headers`：禁止 `Authorization`、`Proxy-Authorization`、`Cookie`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`（不区分大小写），以及与 `meta.auth.name`（`header` 类型）同名的头；值不得含换行；
 - 请求体编码后 ≤1MB（`multipart` 的文件内容不计入）；
 - `timeout` 超过上限按上限；`responseType` 合法；
@@ -201,7 +201,7 @@ meta: {
 
 不补全、仍按插件故障处理的情况：`status` 不是四个合法值之一（宿主不替插件猜“上游的哪个状态算成功”）；`error.class` 写了但不合法；`error` 是空字符串或空对象；对象既没有 `type` 也没有 `url` / `text`；非文本模型的字符串不是 http/https 地址（含 `data:` 的 base64，本契约不支持内联 base64 产物）。`immediate` 与 `parseQueryResponse` 的返回值走同一套规则。
 
-宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https（主机不限，内网地址在下载时拦截）；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
+宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https（内网下载仅允许部署端已放行的渠道同源地址）；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
 
 **导入草稿的参数预填建议（`paramHints`，可选）**：模型能力由运营在后台配置，插件不声明；但导入时插件可以告诉平台“这个模型的某个生成参数建议配成什么”，平台在导入那一刻按种类套默认能力模板后，用它覆盖**模板里同名参数**的取值设置。之后运营可以随意修改，后端校验与下单都不读它。
 
