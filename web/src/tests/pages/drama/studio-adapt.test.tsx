@@ -5,6 +5,8 @@ import type { Segment } from "@/api/drama/type";
 import { GenerateControls } from "@/pages/drama/studio/generate-controls";
 import { PromptPane } from "@/pages/drama/studio/prompt-pane";
 import { StudioContext, type Studio } from "@/pages/drama/studio/use-studio";
+import { useTasksStore } from "@/store/tasks";
+import { makeTask } from "../../utils/tasks/fixtures";
 
 const seg = (patch: Partial<Segment> = {}): Segment => ({
   id: "s1",
@@ -114,6 +116,51 @@ describe("片场：提示词框撑满剩余高度", () => {
 });
 
 describe("片场：生成按钮的拦截原因", () => {
+  test("视频卡片已收到失败，片段快照还在生成中时立即解锁", () => {
+    const task = makeTask({ task_ref: "video-attempt", status: "failed" });
+    /** 静态渲染使用任务库的服务端初始快照。 */
+    const initial = useTasksStore.getInitialState();
+    const before = initial.tasks;
+    initial.tasks = { [task.id]: task };
+    try {
+      const html = render(
+        studio({
+          selected: seg({
+            status: "running",
+            takes: [
+              {
+                taskId: task.task_ref!,
+                status: "pending",
+                asset: null,
+                errorMessage: "",
+                createdAt: "",
+              },
+            ],
+          }),
+        }),
+        <GenerateControls />,
+      );
+      expect(html).not.toContain("这个片段正在生成");
+      expect(html).toMatch(/<button[^>]*title="开始生成这个片段的视频[^"]*"[^>]*>立即生成/);
+    } finally {
+      initial.tasks = before;
+    }
+  });
+
+  test("片段失败后可重新提交，由提交动作重新读取素材并校验", () => {
+    const value = studio({ selected: seg({ status: "error" }) });
+    const plan = { ...value.plan!, errors: { images: "预览中缺少参考图片" } };
+    const html = render({ ...value, plan }, <GenerateControls />);
+    expect(html).toMatch(/<button[^>]*title="开始生成这个片段的视频[^"]*"[^>]*>立即生成/);
+
+    const submitting = render(
+      { ...value, plan, submitting: new Set(["s1"]) },
+      <GenerateControls />,
+    );
+    expect(submitting).toContain("正在提交");
+    expect(submitting).toMatch(/<button[^>]*\sdisabled=""[^>]*>/);
+  });
+
   test("选的是原稿：H3 模型还没转写也能生成（原稿直接生成，不要求先转写）", () => {
     const html = render(studio({ selected: seg(), promptView: "source" }), <GenerateControls />);
     expect(html).not.toContain("先把原稿转写为 H3");
