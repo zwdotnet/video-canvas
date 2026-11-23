@@ -88,7 +88,7 @@ describe("characterNodeAspect：角色卡节点框跟主图同比例，不再固
   });
 });
 
-describe("角色卡节点的多版本徽标：生成过多张就能看历史、选主图", () => {
+describe("角色卡节点的版本徽标：看历史、选主图", () => {
   const output = (id: string) => ({
     id,
     src: `/a/${id}.png`,
@@ -97,10 +97,10 @@ describe("角色卡节点的多版本徽标：生成过多张就能看历史、�
     createdAt: 1,
   });
 
-  test("只有一版：没有徽标", () => {
+  test("只有一版：可以从徽标打开历史", () => {
     expect(
       showVersionBadge(data({ assetId: "1", src: "/a/1.png", outputs: [output("1")] })),
-    ).toBeNull();
+    ).toEqual({ count: 1, generating: false });
   });
 
   test("有多版：显示总数，和图片节点同一套", () => {

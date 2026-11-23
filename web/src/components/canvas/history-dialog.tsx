@@ -249,7 +249,10 @@ export function NodeHistoryDialog() {
   const outputs = useMemo(() => (data ? readOutputs(data) : []), [data]);
   // 最新在前
   const ordered = useMemo(() => [...outputs].reverse(), [outputs]);
-  const activeId = data ? activeOutputIdOf(data) : undefined;
+  const activeId =
+    data && data.status !== "running" && data.status !== "error"
+      ? activeOutputIdOf(data)
+      : undefined;
   const pending = data
     ? data.pendingTaskIds?.length || (data.status === "running" && outputs.length > 0 ? 1 : 0)
     : 0;
@@ -358,7 +361,7 @@ export function NodeHistoryDialog() {
           key={output.id}
           output={output}
           index={outputs.indexOf(output)}
-          current={output.id === activeId && data?.status === "done"}
+          current={output.id === activeId}
           fullscreen={full}
           disabledReason={disabledReason}
           onPick={() => setMain(output.id)}
@@ -475,7 +478,7 @@ export function NodeHistoryDialog() {
         countLabel="历史版本"
         onClose={() => setZoom(null)}
         renderAction={(item) =>
-          item.id === activeId && data?.status === "done" ? (
+          item.id === activeId ? (
             <span className="bg-chrome ring-chrome-border flex h-7 items-center rounded-full px-3 ring-1">
               主图
             </span>

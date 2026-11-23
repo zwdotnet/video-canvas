@@ -35,8 +35,11 @@ describe("showVersionBadge：节点右上角的多版本徽标", () => {
     });
   });
 
-  test("只有 1 版且没有任务在跑：不显示（也就没有历史入口）", () => {
-    expect(showVersionBadge(makeData({ outputs: [out("1")] }))).toBeNull();
+  test("有 1 版就显示历史入口；空节点没有入口", () => {
+    expect(showVersionBadge(makeData({ outputs: [out("1")] }))).toEqual({
+      count: 1,
+      generating: false,
+    });
     expect(showVersionBadge(makeData({}))).toBeNull();
   });
 
@@ -69,10 +72,10 @@ describe("showVersionBadge：节点右上角的多版本徽标", () => {
     ).toBeNull();
   });
 
-  test("旧画布只有 src + assetId 的单版本不显示", () => {
+  test("旧画布只保存了 src 和 assetId 也能打开历史", () => {
     expect(
       showVersionBadge(makeData({ src: "/files/a.png", assetId: "5", mediaType: "image" })),
-    ).toBeNull();
+    ).toEqual({ count: 1, generating: false });
   });
 });
 
@@ -87,6 +90,7 @@ describe("canSetMain：单击设为主图的条件", () => {
   test("已经是主图且节点正常：什么也不用做", () => {
     const data = makeData({ status: "done", outputs: [out("1"), out("2")], activeOutputId: "2" });
     expect(canSetMain(data, "2")).toEqual({ ok: false, reason: null });
+    expect(canSetMain({ ...data, status: "idle" }, "2")).toEqual({ ok: false, reason: null });
   });
 
   test("节点失败后点当前那一版：放行（把它找回来）", () => {

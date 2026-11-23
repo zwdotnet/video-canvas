@@ -4,7 +4,7 @@ import type { CanvasNode, CanvasNodeData, FlowNode, NodeOutput } from "@/types";
 import { findSlotsBeside } from "./duplicate";
 import { MEDIA_KIND_OF, activeOutputIdOf, isGenerating, readOutputs } from "./outputs";
 
-/** 节点右上角多版本徽标要显示的内容；不该显示返回 null */
+/** 节点右上角版本徽标要显示的内容；不该显示返回 null */
 export type VersionBadge = {
   /** 历史版本总数（不是本次数量） */
   count: number;
@@ -13,16 +13,16 @@ export type VersionBadge = {
 };
 
 /**
- * 多版本徽标：数字是「预计总数」= 已有的历史版本 + 还在生成的任务数，所以一提交 N 个任务就显示 N，
- * 陆续出图时总数不变，不是只数已成功的。总数 ≥2 才显示（只有 1 版、也没有第二张在路上的节点没有历史入口）；
- * 文本节点没有。
+ * 版本徽标：有一版就可以打开历史；没有产物时，只有同时生成多版才显示入口。
+ * 徽标数字包含还在生成的任务，文本节点不显示。
  */
 export function showVersionBadge(data: CanvasNodeData): VersionBadge | null {
   if (data.kind === "script") return null;
   const generating = isGenerating(data);
   const inFlight = data.pendingTaskIds?.length ? data.pendingTaskIds.length : generating ? 1 : 0;
-  const count = readOutputs(data).length + inFlight;
-  return count >= 2 ? { count, generating } : null;
+  const outputCount = readOutputs(data).length;
+  if (outputCount === 0 && inFlight < 2) return null;
+  return { count: outputCount + inFlight, generating };
 }
 
 /** 单击设为主图能不能做：生成中（占位里还没有第一张）不行；已经是主图不用做 */
@@ -33,7 +33,7 @@ export function canSetMain(
   if (data.status === "running") return { ok: false, reason: "生成中，出第一张后可切换" };
   if (!readOutputs(data).some((item) => item.id === outputId)) return { ok: false, reason: null };
   // 失败后点当前那一版，等于把它找回来，照样放行
-  if (outputId === activeOutputIdOf(data) && data.status === "done") {
+  if (outputId === activeOutputIdOf(data) && data.status !== "error") {
     return { ok: false, reason: null };
   }
   return { ok: true };
