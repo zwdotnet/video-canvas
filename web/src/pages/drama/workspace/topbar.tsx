@@ -89,8 +89,7 @@ function TitleInput() {
 }
 
 /**
- * 这部短剧的画风 / 比例 / Agent 模型：画风、比例在首页新建时选定，进了工作台只显示、不能改
- * （改了会让前后生成的资产不一致）；整个胶囊点开「项目设置」（Agent 模型、资产图片模型、提示词）。
+ * 这部短剧的画风 / 比例 / Agent 模型。胶囊显示当前设置，点击可到「项目设置」编辑画风提示词等设置。
  */
 function ProjectSettings({ onSettings }: { onSettings: () => void }) {
   const { drama } = useWorkspace();

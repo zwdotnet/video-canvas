@@ -123,6 +123,8 @@ const library: PromptLibrary = {
   remove: async () => {},
 };
 
+const builtinStyle = { key: "real_city_film", name: "都市电影", prompt: "真人电影质感，自然光" };
+
 const dramaOf = (patch: Partial<Drama> = {}) =>
   ({
     id: "d1",
@@ -130,6 +132,8 @@ const dramaOf = (patch: Partial<Drama> = {}) =>
     promptSettings: settings(),
     imageModels: { character: "", scene: "", prop: "", board: "" },
     textModel: "",
+    styleKey: builtinStyle.key,
+    styleCustom: "",
     episodes: [],
     ...patch,
   }) as never;
@@ -153,7 +157,7 @@ const mountBody = (
       }
     >
       <Dialog open>
-        <ProjectSettingsBody library={library} onClose={onClose} />
+        <ProjectSettingsBody library={library} styles={[builtinStyle]} onClose={onClose} />
       </Dialog>
     </DramaWorkspaceContext.Provider>,
   );
@@ -197,6 +201,51 @@ describe("项目设置：纯逻辑", () => {
 });
 
 describe("项目设置：弹窗内容", () => {
+  test("自定义画风放在提示词最后，回显开拍所填内容，点完成才保存", async () => {
+    const patches: Omit<UpdateDramaInput, "revision">[] = [];
+    const m = await mountBody(
+      dramaOf({ styleKey: "custom", styleCustom: "暖色黏土定格" }),
+      patches,
+    );
+    try {
+      const row = chip(m.container, "自定义画风");
+      expect(row.closest("[data-slot='prompt-rows']")?.lastElementChild).toBe(row.parentElement);
+      expect(row.className).toBe(chip(m.container, "故事板提示词").className);
+      await dom.click(row);
+      const input = dom.win.document.querySelector<HTMLTextAreaElement>(
+        "textarea[aria-label='自定义画风']",
+      );
+      expect(input?.value).toBe("暖色黏土定格");
+      await dom.type(input, " ");
+      expect(byText(m.container, "完成")?.disabled).toBe(true);
+      await dom.type(input, " 水彩手绘，低饱和 ");
+      expect(patches).toEqual([]);
+      await dom.click(byText(m.container, "完成"));
+      expect(patches).toEqual([{ styleCustom: "水彩手绘，低饱和" }]);
+    } finally {
+      await m.unmount();
+    }
+  });
+
+  test("内置画风显示开拍时选中的提示词，修改后保存为项目自定义画风", async () => {
+    const patches: Omit<UpdateDramaInput, "revision">[] = [];
+    const m = await mountBody(dramaOf(), patches);
+    try {
+      const row = chip(m.container, "自定义画风");
+      expect(row?.textContent).toBe("内置");
+      await dom.click(row);
+      const input = dom.win.document.querySelector<HTMLTextAreaElement>(
+        "textarea[aria-label='自定义画风']",
+      );
+      expect(input?.value).toBe(builtinStyle.prompt);
+      await dom.type(input, "剪纸风格");
+      await dom.click(byText(m.container, "完成"));
+      expect(patches).toEqual([{ styleKey: "custom", styleCustom: "剪纸风格" }]);
+    } finally {
+      await m.unmount();
+    }
+  });
+
   test("提示「修改只影响之后发起的任务」，四行显示已建剧时的设置，来源丢失的行标红提示", async () => {
     const m = await mountBody(dramaOf(), []);
     const text = m.container.textContent ?? "";

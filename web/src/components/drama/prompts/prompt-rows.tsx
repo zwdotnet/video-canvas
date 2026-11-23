@@ -8,6 +8,16 @@ import { PROMPT_STEPS, promptRowState, sameChoice } from "@/utils/drama/prompts"
 
 import type { PromptLibrary } from "./use-prompt-library";
 
+/** 提示词设置行的标签和控件共用同一布局。 */
+export function PromptRow({ name, children }: { name: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-12 items-center gap-3 px-3">
+      <span className="text-muted-foreground w-24 shrink-0 text-sm">{name}</span>
+      {children}
+    </div>
+  );
+}
+
 /** 下拉里的分组小标题 */
 const GroupLabel = ({ children }: { children: React.ReactNode }) => (
   <div className="text-muted-foreground px-2 pt-2 pb-0.5 text-xs">{children}</div>
@@ -60,6 +70,7 @@ export function PromptRows({
   saved,
   onChange,
   onEdit,
+  children,
 }: {
   /** 确认的原文类型；script 时分集规划、分集剧本置灰 */
   kind: "script" | "novel" | null;
@@ -76,6 +87,8 @@ export function PromptRows({
   onChange: (step: PromptStep, choice: PromptChoice) => void;
   /** 新建（item 为 null）或编辑某条我的提示词 */
   onEdit: (step: PromptStep, item: MyPrompt | null) => void;
+  /** 与提示词一起展示的项目设置项 */
+  children?: React.ReactNode;
 }) {
   const removeMine = async (step: PromptStep, item: MyPrompt) => {
     await library.remove(item);
@@ -96,8 +109,7 @@ export function PromptRows({
           keep && !computed.disabledReason ? { ...computed, label: keep.label } : computed;
         const flagged = keep ? !!keep.missing : row.missing;
         return (
-          <div key={key} className="flex min-h-12 items-center gap-3 px-3">
-            <span className="text-muted-foreground w-24 shrink-0 text-sm">{name}</span>
+          <PromptRow key={key} name={name}>
             <ChipPopover
               variant="field"
               label={row.label}
@@ -195,9 +207,10 @@ export function PromptRows({
                 </div>
               )}
             </ChipPopover>
-          </div>
+          </PromptRow>
         );
       })}
+      {children}
     </div>
   );
 }

@@ -4,13 +4,15 @@ import { toast } from "sonner";
 
 import type {
   DramaImageModels,
+  DramaStyles,
   MyPrompt,
   PromptChoice,
   PromptSettings,
   PromptStep,
 } from "@/api/drama/type";
+import { ChipPopover } from "@/components/drama/pickers";
 import { PromptEditorPane } from "@/components/drama/prompts/prompt-editor";
-import { PromptRows } from "@/components/drama/prompts/prompt-rows";
+import { PromptRow, PromptRows } from "@/components/drama/prompts/prompt-rows";
 import {
   usePromptLibrary,
   type PromptLibrary,
@@ -26,9 +28,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useDramaStyles } from "@/hooks/use-drama-styles";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useModelSwitchStore } from "@/store/drama-model-switch";
 import { pickBoardModel } from "@/utils/drama/board-input";
+import { CUSTOM_STYLE_KEY } from "@/utils/drama/options";
 import { PROMPT_STEPS, sameChoice } from "@/utils/drama/prompts";
 import { promptsToChoices, type StartPrompts } from "@/utils/drama/start-settings";
 
@@ -77,17 +82,20 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 /**
- * 项目设置的内容（弹窗正文，每次打开重新挂载）：Agent 模型 + 资产图片模型三行 + 故事板图片模型 + 提示词四行，同开拍设置；
+ * 项目设置的内容（弹窗正文，每次打开重新挂载）：Agent 模型、图片模型、提示词和自定义画风；
  * 新建 / 编辑「我的提示词」时整块换成编辑器。
- * 点「完成」才保存（PATCH text_model / image_models / prompts）；故事板的模型不会让资产卡换模型，只影响之后发起的任务；
+ * 点「完成」才保存；故事板的模型不会让资产卡换模型，只影响之后发起的任务；
  * 换了图片模型的类型，资产区里还没生成的卡跟着换成新模型。
  */
 export function ProjectSettingsBody({
   library,
+  styles,
   onClose,
 }: {
   /** 提示词库 */
   library: PromptLibrary;
+  /** 内置画风，用于回显开拍时选中的内置提示词 */
+  styles: DramaStyles["styles"];
   /** 关闭弹窗 */
   onClose: () => void;
 }) {
@@ -96,15 +104,30 @@ export function ProjectSettingsBody({
   const [value, setValue] = useState<StartPrompts>(() => settingsToPrompts(drama.promptSettings));
   const [imageModels, setImageModels] = useState<DramaImageModels>(() => drama.imageModels);
   const [textModel, setTextModel] = useState(drama.textModel);
+  const [styleDraft, setStyleDraft] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ step: PromptStep; item: MyPrompt | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const changed = changedSteps(drama.promptSettings, value);
   const changedModels = changedImageModels(drama.imageModels, imageModels);
   const boardChanged = imageModels.board !== drama.imageModels.board;
   const textChanged = textModel !== drama.textModel;
+  const isCustomStyle = drama.styleKey === CUSTOM_STYLE_KEY;
+  const savedStyle = isCustomStyle
+    ? drama.styleCustom
+    : (styles.find(({ key }) => key === drama.styleKey)?.prompt ?? "");
+  const style = styleDraft ?? savedStyle;
+  const styleCustom = style.trim();
+  const styleChanged = styleCustom !== savedStyle.trim();
+  const styleInvalid = styleChanged && !styleCustom;
 
   const done = async () => {
-    if (changed.length === 0 && changedModels.length === 0 && !boardChanged && !textChanged) {
+    if (
+      changed.length === 0 &&
+      changedModels.length === 0 &&
+      !boardChanged &&
+      !textChanged &&
+      !styleChanged
+    ) {
       onClose();
       return;
     }
@@ -114,6 +137,8 @@ export function ProjectSettingsBody({
         ...(changed.length > 0 ? { prompts: promptsToChoices(value) } : {}),
         ...(changedModels.length > 0 || boardChanged ? { imageModels } : {}),
         ...(textChanged ? { textModel } : {}),
+        ...(styleChanged ? { styleCustom } : {}),
+        ...(styleChanged && !isCustomStyle ? { styleKey: CUSTOM_STYLE_KEY } : {}),
       });
       if (changedModels.length > 0) {
         useModelSwitchStore
@@ -208,14 +233,39 @@ export function ProjectSettingsBody({
               setValue((prev) => ({ ...prev, [step]: choice }))
             }
             onEdit={(step, item) => setEditor({ step, item })}
-          />
+          >
+            <PromptRow name="自定义画风">
+              <ChipPopover
+                variant="field"
+                label={isCustomStyle || styleChanged ? "自定义" : "内置"}
+                ariaLabel="自定义画风"
+                width="w-80 max-w-[calc(100vw-2rem)]"
+              >
+                {() => (
+                  <Textarea
+                    aria-label="自定义画风"
+                    aria-invalid={styleInvalid}
+                    value={style}
+                    maxLength={500}
+                    onChange={(event) => setStyleDraft(event.target.value)}
+                    className="max-h-36 min-h-24 overflow-y-auto"
+                  />
+                )}
+              </ChipPopover>
+            </PromptRow>
+          </PromptRows>
         </Section>
       </div>
       <DialogFooter className="m-0 border-0 bg-transparent px-5 pb-5">
         <Button variant="ghost" className="rounded-full" onClick={onClose}>
           取消
         </Button>
-        <Button className="rounded-full px-6" disabled={saving} onClick={() => void done()}>
+        <Button
+          className="rounded-full px-6"
+          disabled={saving || styleInvalid}
+          title={styleInvalid ? "请输入自定义画风" : undefined}
+          onClick={() => void done()}
+        >
           {saving && <Loader2 className="animate-spin" />}
           完成
         </Button>
@@ -227,7 +277,8 @@ export function ProjectSettingsBody({
 /** 打开后才加载提示词库，关闭即释放 */
 function ProjectSettingsContent({ onClose }: { onClose: () => void }) {
   const library = usePromptLibrary();
-  return <ProjectSettingsBody library={library} onClose={onClose} />;
+  const { styles } = useDramaStyles();
+  return <ProjectSettingsBody library={library} styles={styles} onClose={onClose} />;
 }
 
 /**
