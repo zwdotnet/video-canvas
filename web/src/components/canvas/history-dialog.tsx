@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   Ellipsis,
+  FolderOpen,
   ImagePlus,
   Image as ImageIcon,
   Loader2,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import type { AssetDto } from "@/api/asset/type";
+import { LibraryPickerForCharacter } from "@/components/canvas-editor/character-library-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +37,9 @@ import type { CanvasEdge, CanvasNode, NodeOutput } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
 import type { PreviewItem } from "@/utils/canvas/preview-items";
+import { useCanvasReadOnly } from "@/utils/canvas/read-only";
 import { buildVersionNodes, canSetMain, recentFailedTasks } from "@/utils/canvas/versions";
+import { applyPickedAssets } from "@/utils/characters/node-character";
 import { cancelTasks } from "@/utils/tasks/gateway";
 import { cancelableTaskIds } from "@/utils/tasks/status";
 import { pendingTileTitles } from "@/utils/canvas/history-pending";
@@ -240,10 +245,12 @@ export function NodeHistoryDialog() {
   const node = useNodesData<CanvasNode>(nodeId ?? "");
   const { updateNodeData, getNode, getNodes, setNodes } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
+  const readOnly = useCanvasReadOnly();
 
   const [fullscreen, setFullscreen] = useState(false);
   const [zoom, setZoom] = useState<LightboxTarget | null>(null);
   const [confirm, setConfirm] = useState<NodeOutput[] | null>(null);
+  const [pickingMainFor, setPickingMainFor] = useState<string | null>(null);
 
   const data = nodeId && node ? node.data : null;
   const outputs = useMemo(() => (data ? readOutputs(data) : []), [data]);
@@ -265,6 +272,7 @@ export function NodeHistoryDialog() {
     setFullscreen(false);
     setZoom(null);
     setConfirm(null);
+    setPickingMainFor(null);
     close();
   }, [close]);
 
@@ -284,6 +292,19 @@ export function NodeHistoryDialog() {
     },
     [data, history, nodeId, updateNodeData],
   );
+
+  const replaceMain = (assets: AssetDto[]) => {
+    if (!nodeId || pickingMainFor !== nodeId || readOnly) return;
+    const current = getNode(nodeId);
+    if (!current || current.data.kind !== "character" || current.data.status === "running") return;
+    if (current.data.status === "done" && current.data.assetId === assets[0]?.id) return;
+
+    const { patch } = applyPickedAssets(current.data, assets, "main");
+    if (Object.keys(patch).length === 0) return;
+    history?.record();
+    // 写入原节点。有主图后其余生成任务只追加历史版本，保留手动选中的图。
+    updateNodeData(nodeId, { ...patch, status: "done", error: null, errorTaskRef: null });
+  };
 
   const addToCanvas = useCallback(
     (versions: NodeOutput[], confirmed = false) => {
@@ -406,6 +427,14 @@ export function NodeHistoryDialog() {
                   <Ellipsis className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-44">
+                  {data?.kind === "character" && !readOnly && (
+                    <DropdownMenuItem
+                      disabled={data.status === "running"}
+                      onClick={() => setPickingMainFor(nodeId)}
+                    >
+                      <FolderOpen /> 素材库
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={downloadAll}>
                     <Download /> 下载全部
                   </DropdownMenuItem>
@@ -427,6 +456,18 @@ export function NodeHistoryDialog() {
               </DialogPrimitive.Close>
             </div>
             {grid(false)}
+            {data?.kind === "character" && (
+              <LibraryPickerForCharacter
+                request={
+                  nodeId && pickingMainFor === nodeId && !readOnly
+                    ? { kind: "image", purpose: "main" }
+                    : null
+                }
+                data={data}
+                onClose={() => setPickingMainFor(null)}
+                onConfirm={replaceMain}
+              />
+            )}
           </DialogPrimitive.Popup>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>

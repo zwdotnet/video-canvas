@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
+import type { PersistedCanvasNodeDto } from "@/api/canvas/type";
 import type { Capabilities } from "@/api/model/type";
 import type { NodeCharacter } from "@/types";
-import type { RefAsset } from "@/utils/drama/segment-assets";
+import { applyPickedAssets } from "@/utils/characters/node-character";
 import { boardLine } from "@/utils/drama/board";
+import { assetsFromGraph, type RefAsset } from "@/utils/drama/segment-assets";
 import { planSegmentInput } from "@/utils/drama/segment-input";
 
 /** 角色卡节点自带的数据：补充图 2、音频音色 9（素材 id 在 payload 里是字符串） */
@@ -110,6 +112,33 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
     expect(plan.audioMax).toBe(3);
     const linkedChar = plan.refs.find((ref) => ref.id === "n1");
     expect(linkedChar).toMatchObject({ state: "image", imageCount: 2, voice: "used" });
+  });
+
+  test("角色卡原地换主图后，同一条 @ 引用解析到新主图，补充图和音色继续使用", () => {
+    const node: PersistedCanvasNodeDto = {
+      id: "n1",
+      type: "canvas",
+      position: { x: 0, y: 0 },
+      data: {
+        kind: "character",
+        label: "林川",
+        status: "done",
+        assetId: "1",
+        src: "https://cdn/1",
+        character: roleData(),
+        drama: { type: "character", episodes: [] },
+      },
+    };
+    const { patch } = applyPickedAssets(node.data, [{ id: "7", url: "https://cdn/7" }], "main");
+    const plan = planSegmentInput({
+      ...base,
+      caps: video(),
+      prompt: "@[林川](n1)开口说话",
+      assets: assetsFromGraph([{ ...node, data: { ...node.data, ...patch } }]),
+    });
+    expect(plan.refs.map((ref) => ref.id)).toEqual(["n1"]);
+    expect(plan.input.images).toEqual([7, 2]);
+    expect(plan.input.audios).toEqual([9]);
   });
 
   test("超出参考图上限按顺序截断，提示第几张起未带入，角色卡被截的部分标出来", () => {

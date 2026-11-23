@@ -239,7 +239,7 @@ function CharacterNodeBody({
     selected: paramAspect(vm.caps, vm.params),
   });
 
-  // 生成过多张（或换过主图）：右上角出「历史」徽标，点开选一张当主图，和图片节点一样
+  // 有主图就能点右上角的版本徽标查看历史或从素材库换图
   const badge = showVersionBadge(data);
 
   const showTask = SHOWS_TASK_BODY.has(vm.view.phase);
