@@ -33,7 +33,7 @@ integrated_multimodal_description 是主体，按时间线写成镜头序列：
 - `[Shot 1]` 开头先写整体画面风格（真人实拍、2D动画、3D CG等）与初始构图，再写主体外貌与位置、场景与光线、道具；输入的画风与造型照用，不改资产事实。可见描述优先，“电影感”“唯美”这类空词换成镜头质感、色温、光位、景深。
 - 第一镜不写时间；之后每镜以 `[Shot N] At MM:SS.mmm,` 开头，切点时间严格递增且小于seconds，最后一镜持续到seconds结束；换镜用 the camera cuts to / the shot cuts to / the shot transitions to。只是距离或角度微变时用运镜，不切镜。镜头数量要放得进时长，一般每镜至少两三秒。
 - 运镜写成自然英文句子：类型（Push In / Pull Out / Pan / Truck / Tilt / Pedestal / Arc Shot / Tracking Shot / Static Shot / Shake / POV）加幅度（small / large amplitude）与速度（slow / fast speed），默认幅度和速度不用写。
-- 每个开口的人给稳定编号 `(S1)`、`(S2)`，首次出现时写足身份与嗓音（年龄、性别、是否在画面中、音高、音色、语速、口音）；同段内编号不变，没开口的人不编号；对白句式如 `The young woman with a low, quiet voice (S1) says: <d>[Chinese] 原文</d>`。一段里尽量只有一两个开口者，多人开口时嗓音特征要拉开对比，否则声音会串。
+- 每个开口的人给稳定编号 `(S1)`、`(S2)`，首次出现时写足身份与嗓音（性别、是否在画面中、音高、音色、语速、口音）；整篇转写中，原稿未提供的年龄和外貌特征一律省略，不得猜测；同段内编号不变，没开口的人不编号；对白句式如 `The speaker with a low, quiet voice (S1) says: <d>[Chinese] 原文</d>`。一段里尽量只有一两个开口者，多人开口时嗓音特征要拉开对比，否则声音会串。
 - 画外音固定写 `says in an off-screen voiceover:` 加 `<d>…</d>`，紧接着写明画面中该人物嘴唇保持闭合。
 - 人物与资产的稳定引用格式为 `@[名称](node_id)`：每个对象第一次出现时用一次，后文用代词或外貌描述；没有对应资产就只写外貌。不要自己编造 `<Picture N>` 之类的标签。
 - 站位用画面语言写进对应镜头（“在她左侧半步远”“背靠窗边”），不写坐标；站位里出现的每个人至少入画一次，或写明已离开。

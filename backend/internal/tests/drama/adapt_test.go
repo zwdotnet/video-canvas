@@ -41,6 +41,9 @@ func TestAdaptPrompt(t *testing.T) {
 				t.Fatalf("%s 转写提示词缺少 %q", tc.format, want)
 			}
 		}
+		if tc.format == "h3" && !strings.Contains(prompt, "原稿未提供的年龄和外貌特征一律省略") {
+			t.Fatal("H3 转写提示词必须限制年龄与外貌特征的来源")
+		}
 	}
 	if _, err := drama.AdaptPrompt("seedance", drama.AdaptInput{Source: adaptSource, Seconds: 9}); err == nil {
 		t.Fatal("seedance 不需要转写，应报错")
