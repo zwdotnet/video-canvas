@@ -225,6 +225,42 @@ func TestExecutorSSRFStillEnforcedWithSharedTransport(t *testing.T) {
 	}
 }
 
+func TestExecutorSubmitAndDownloadFromLocalAPI(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/result" {
+			_, _ = w.Write([]byte("local result"))
+			return
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+	origins, err := netguard.ParseLocalAPIOrigins(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := execWith(syncTextPlugin, func(o *plugin.Options) {
+		o.IPAllowed = nil
+		o.LocalAPIOrigins = origins
+	})
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "local", provider.RateLimit{})
+	if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}}); err != nil {
+		t.Fatalf("提交本地模型任务：%v", err)
+	}
+	dl, err := exec.Download(context.Background(), snap, upstream.URL+"/result")
+	if err != nil {
+		t.Fatalf("下载本地模型产物：%v", err)
+	}
+	body, err := io.ReadAll(dl.Body)
+	_ = dl.Body.Close()
+	if err != nil || string(body) != "local result" {
+		t.Fatalf("读取本地模型产物：body=%q err=%v", body, err)
+	}
+	public := syncSnapshot("https://example.com", syncTextPlugin, "public", provider.RateLimit{})
+	if dl, err := exec.Download(context.Background(), public, upstream.URL+"/result"); err == nil || dl != nil {
+		t.Fatal("公网渠道不能借用本地渠道的产物地址或连接池")
+	}
+}
+
 // 渠道 base_url 解析失败时，Download 返回错误而不是空指针崩溃。
 func TestExecutorDownloadInvalidBaseURL(t *testing.T) {
 	exec := execWith(syncTextPlugin, nil)

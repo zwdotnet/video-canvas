@@ -123,6 +123,21 @@ func TestStream_BlocksInternalAddresses(t *testing.T) {
 	}
 }
 
+func TestStream_LocalAPIOrigin(t *testing.T) {
+	up := newUpstream(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		sse(w, chunk(`{"content":"local model"}`, "stop"), "[DONE]")
+	})
+	origins, err := netguard.ParseLocalAPIOrigins(up.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := llmgateway.New(llmgateway.Options{LocalAPIOrigins: origins})
+	res, err := streamOnce(t, g, target(up))
+	if err != nil || res == nil || res.Text != "local model" {
+		t.Fatalf("本地模型调用：result=%+v err=%v", res, err)
+	}
+}
+
 func TestStream_DoesNotFollowRedirects(t *testing.T) {
 	var target2Hits atomic.Int32
 	other := newUpstream(t, func(w http.ResponseWriter, r *http.Request, _ []byte) { target2Hits.Add(1) })

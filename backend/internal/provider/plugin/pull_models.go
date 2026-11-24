@@ -85,7 +85,7 @@ func (e *Executor) fetchModelDocs(ctx context.Context, ch provider.ChannelSnapsh
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := e.client().Do(req)
+	resp, err := e.client(ch.BaseURL).Do(req)
 	if err != nil {
 		return nil, pullTransportError(err, target, redact)
 	}
@@ -194,7 +194,7 @@ func pullTransportError(err error, target string, redact func(string) string) er
 	}
 	switch {
 	case netguard.IsGuardError(err):
-		return &provider.PullError{Reason: provider.PullUnreachable, Message: fmt.Sprintf("%s 是不允许访问的地址（内网 / 回环地址会被拦截）", host)}
+		return &provider.PullError{Reason: provider.PullUnreachable, Message: fmt.Sprintf("访问 %s 被出站策略拦截。局域网模型 API 可在部署端通过 APP_AI_LOCAL_API_ORIGINS 放行渠道来源。", host)}
 	case errors.Is(err, context.DeadlineExceeded):
 		return &provider.PullError{Reason: provider.PullUnreachable, Message: fmt.Sprintf("连接 %s 超时（%d 秒内没有响应）", host, int(pullModelsTimeout/time.Second))}
 	default:

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/netguard"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 )
@@ -160,6 +161,38 @@ func TestListUpstreamModels_拦截内网地址(t *testing.T) {
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullUnreachable {
 		t.Fatalf("内网地址应被拦截并报不可达：%v", err)
+	}
+	if !strings.Contains(pe.Message, "APP_AI_LOCAL_API_ORIGINS") {
+		t.Fatalf("应提示局域网 API 的部署设置：%v", err)
+	}
+}
+
+func TestListUpstreamModels_LocalAPIOrigin(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			http.Redirect(w, r, "/local-models", http.StatusTemporaryRedirect)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"local-model"}]}`))
+	}))
+	defer upstream.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, upstream.URL+"/v1/models", http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	origins, err := netguard.ParseLocalAPIOrigins(upstream.URL + "," + redirect.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := plugin.New(plugin.Options{LocalAPIOrigins: origins})
+	models, err := exec.ListUpstreamModels(context.Background(), provider.ChannelSnapshot{BaseURL: upstream.URL + "/v1"}, "k")
+	if err != nil || !reflect.DeepEqual(models, []string{"local-model"}) {
+		t.Fatalf("拉取本地模型：models=%v err=%v", models, err)
+	}
+	_, err = exec.ListUpstreamModels(context.Background(), provider.ChannelSnapshot{BaseURL: redirect.URL}, "k")
+	var pullErr *provider.PullError
+	if !errors.As(err, &pullErr) || pullErr.Reason != provider.PullUnreachable {
+		t.Fatalf("即使目标允许用于其自身渠道，跨端口跳转也应被拒：%v", err)
 	}
 }
 

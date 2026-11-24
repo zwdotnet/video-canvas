@@ -33,9 +33,10 @@ type Options struct {
 	IdleTimeout time.Duration
 	// Dial 用于测试里替换拨号；生产不设。
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
-	// IPAllowed 用于测试里放行回环等内网地址（假上游是本机 httptest 服务）；生产不设，默认拒绝全部内网地址。
-	// 渠道上没有“允许访问内网”开关：任何渠道都不能让服务器访问内网。
+	// IPAllowed 可在测试和开发时替换默认 IP 策略。
 	IPAllowed func(net.IP) bool
+	// LocalAPIOrigins 仅允许渠道访问部署端显式配置的局域网 API。
+	LocalAPIOrigins netguard.LocalAPIOrigins
 	// Observer 在每次请求尝试结束后收到一条记录（含空闲超时自动重试的那次），用来写运行日志和请求全文；为 nil 时不回调。
 	Observer Observer
 }
@@ -66,7 +67,7 @@ type CallRecord struct {
 type Gateway struct {
 	opts     Options
 	limiters limiterSet
-	outbound *http.Transport
+	outbound *netguard.APITransport
 	tmu      sync.Mutex
 }
 
@@ -247,7 +248,7 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	}
 
 	// 白名单只有渠道自己的域名；重定向一律不跟随，否则带着 Key 的请求会被转到别处
-	client := netguard.NewClient(g.transport(), []string{strings.ToLower(base.Hostname())}, 0)
+	client := netguard.NewClient(g.transport().ForChannel(tg.BaseURL), []string{strings.ToLower(base.Hostname())}, 0)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, redactErr(err, tg.APIKey)
@@ -273,14 +274,13 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	return res, status, err
 }
 
-// transport 懒创建并缓存带 SSRF 拨号校验的传输层，所有渠道共用。
-func (g *Gateway) transport() *http.Transport {
+// transport 懒创建并缓存带 SSRF 拨号校验的传输层。
+func (g *Gateway) transport() *netguard.APITransport {
 	g.tmu.Lock()
 	defer g.tmu.Unlock()
 	if g.outbound == nil {
-		cfg := &netguard.Config{Dial: g.opts.Dial, IPAllowed: g.opts.IPAllowed}
-		cfg.ApplyDefaults()
-		g.outbound = netguard.NewTransport(cfg)
+		cfg := netguard.Config{Dial: g.opts.Dial, IPAllowed: g.opts.IPAllowed}
+		g.outbound = netguard.NewAPITransport(cfg, g.opts.LocalAPIOrigins)
 	}
 	return g.outbound
 }

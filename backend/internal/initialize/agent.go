@@ -14,8 +14,6 @@ import (
 
 	"video-canvas/internal/config"
 	agenthandler "video-canvas/internal/handler/agent"
-	"video-canvas/internal/llmgateway"
-	"video-canvas/internal/llmgateway/llmlog"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/videoframe"
@@ -124,7 +122,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Admin: d.admin,
 		Repo:  d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed, Observer: llmlog.Observer{}}), Skills: d.skills, Web: web, RunUsage: d.repo,
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, AssetLinks: d.assetLinks, Frames: d.frames, FrameStore: d.frameStore, Streamer: newModelGateway(cfg), Skills: d.skills, Web: web, RunUsage: d.repo,
 		Drama: d.drama, DramaSegments: d.segments, DramaApprovalKey: []byte(ac.ServiceToken),
 	})
 	bridge.SetDisabledTools(AgentDisabledTools(ac))

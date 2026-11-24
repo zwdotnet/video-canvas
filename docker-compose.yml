@@ -39,6 +39,7 @@ services:
       APP_REDIS_ADDR: redis:6379
       APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET is required}
       APP_AI_SECRET_KEY: ${APP_AI_SECRET_KEY:?APP_AI_SECRET_KEY is required}
+      APP_AI_LOCAL_API_ORIGINS: ${APP_AI_LOCAL_API_ORIGINS:-}
       APP_AI_PLUGIN_RUNNER_MODE: external
       APP_AI_PLUGIN_RUNNER_NETWORK: unix
       APP_AI_PLUGIN_RUNNER_ADDRESS: /run/plugin-runner/runner.sock
