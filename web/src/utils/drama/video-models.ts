@@ -2,7 +2,7 @@ import type { Capabilities, ModelInfo, ParamField } from "@/api/model/type";
 import { ratioParam } from "@/utils/canvas/node-frame";
 import { matchOption, PROMPT_FORMATS } from "@/utils/tasks/capabilities";
 
-/** 短剧分镜单段时长的合法范围与缺省（契约 §10 的 max_seconds） */
+/** 短剧分镜单段时长的合法范围与缺省（契约 §10 的 max_seconds）。 */
 export const STORYBOARD_SECONDS = { min: 4, max: 60, fallback: 15 } as const;
 
 /**
@@ -29,19 +29,27 @@ export const durationField = (caps: Capabilities | undefined): ParamField | unde
 const numericOptions = (field: ParamField): number[] =>
   (field.options ?? []).map(Number).filter((n) => Number.isFinite(n));
 
+/** 后台未开放时长时，生成按模型的固定默认值下单。 */
+const fixedDuration = (field: ParamField): number | null => {
+  const seconds = Number(field.default);
+  return !field.open && Number.isInteger(seconds) && seconds > 0 ? seconds : null;
+};
+
 /** 模型单段时长上限（秒）；没有时长参数为 null */
 export function modelMaxSeconds(caps: Capabilities | undefined): number | null {
   const field = durationField(caps);
   if (!field) return null;
+  const fixed = fixedDuration(field);
+  if (fixed !== null) return fixed;
   if (field.type === "number") return field.max ?? null;
   const options = numericOptions(field);
   return options.length > 0 ? Math.max(...options) : null;
 }
 
-/** 生成分镜时给后端的 max_seconds：取模型时长上限，夹在 4–60，没有就用缺省 15 */
-/** 生成分镜脚本时随请求带上的视频模型约束：单段时长上限，和片场当前选的视频模型（后端按它的参考音频上限切段） */
+/** 生成分镜脚本时随请求带上的单段时长上限和片场模型。 */
 export type StoryboardTarget = { maxSeconds: number; videoModel?: string };
 
+/** 生成分镜时取所选模型的时长上限，夹在 4–60 秒，无时长上限时使用 15 秒。 */
 export function storyboardMaxSeconds(info: ModelInfo | undefined): number {
   const max = modelMaxSeconds(info?.capabilities);
   if (max === null) return STORYBOARD_SECONDS.fallback;
@@ -56,6 +64,8 @@ export function fitDuration(
   field: ParamField,
   seconds: number,
 ): { value: number; adjusted: boolean } {
+  const fixed = fixedDuration(field);
+  if (fixed !== null) return { value: fixed, adjusted: fixed !== seconds };
   let value = seconds;
   if (field.type === "number") {
     if (field.min !== undefined) value = Math.max(field.min, value);

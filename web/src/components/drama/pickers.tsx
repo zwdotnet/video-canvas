@@ -75,6 +75,7 @@ export function OptionRow({
 export function ChipPopover({
   icon,
   label,
+  labelClassName,
   showChevron = true,
   set = true,
   variant = "chip",
@@ -91,6 +92,8 @@ export function ChipPopover({
 }: {
   icon?: ReactNode;
   label: string;
+  /** 只应用于按钮上的文字。 */
+  labelClassName?: string;
   showChevron?: boolean;
   set?: boolean;
   /**
@@ -142,7 +145,9 @@ export function ChipPopover({
         )}
       >
         {icon}
-        <span className={cn("truncate", variant === "field" ? "max-w-72" : "max-w-40")}>
+        <span
+          className={cn("truncate", variant === "field" ? "max-w-72" : "max-w-40", labelClassName)}
+        >
           {label}
         </span>
         {showChevron && <ChevronDown className="opacity-50" />}

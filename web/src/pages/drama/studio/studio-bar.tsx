@@ -74,9 +74,9 @@ function ResolutionChip() {
 
 const SECOND_CHOICES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 30];
 
-/** 当前片段的时长：选项不超过所选模型的时长上限，当前值总在里面；没有选中片段时不显示 */
+/** 片段时长选项按所选模型筛选，当前片段时长始终显示。 */
 function SecondsChip() {
-  const { selected, actions, video } = useStudio();
+  const { selected, actions, video, plan } = useStudio();
   if (!selected) return null;
   const max = modelMaxSeconds(video.model?.capabilities) ?? 15;
   const options = [...new Set([...SECOND_CHOICES.filter((s) => s <= max), selected.seconds])].sort(
@@ -87,6 +87,7 @@ function SecondsChip() {
       variant="bar"
       icon={<Timer />}
       label={`${selected.seconds}s`}
+      labelClassName={plan?.errors.duration ? "text-status-warning" : "text-foreground"}
       title={`片段时长 · 模型上限 ${max}s`}
       width="w-40"
     >
@@ -97,7 +98,7 @@ function SecondsChip() {
             type="button"
             onClick={() => {
               close();
-              void actions.setSeconds(selected, seconds);
+              if (seconds !== selected.seconds) void actions.setSeconds(selected, seconds);
             }}
             className={cn(
               "hover:bg-muted focus-visible:ring-ring/50 flex min-h-8 items-center rounded-md px-2 text-left text-sm tabular-nums outline-none focus-visible:ring-2",

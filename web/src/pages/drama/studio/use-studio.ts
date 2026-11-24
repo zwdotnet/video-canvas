@@ -622,7 +622,7 @@ export function useStudioState(drama: Drama, no: number, refresh: () => Promise<
             ? { id: segment.id, view: "video" }
             : prev,
         );
-        void reloadSegments(dramaId, no);
+        await reloadSegments(dramaId, no);
       } finally {
         markSubmitting(segment.id, false);
       }

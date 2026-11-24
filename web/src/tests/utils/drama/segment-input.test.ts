@@ -316,7 +316,7 @@ describe("planSegmentInput：@ 解析与参考素材组装（契约 §13）", ()
 });
 
 describe("planSegmentInput：时长与校验", () => {
-  test("片段时长超出模型范围：按上限提交，并提示", () => {
+  test("片段时长超出模型上限：报错并阻止提交", () => {
     const plan = planSegmentInput({
       ...base,
       seconds: 20,
@@ -324,8 +324,7 @@ describe("planSegmentInput：时长与校验", () => {
       prompt: "一个镜头",
       assets: [],
     });
-    expect(plan.input.duration).toBe(15);
-    expect(plan.notices.join("")).toContain("15");
+    expect(plan.errors.duration).toBe("片段 20s 超出模型上限 15s");
   });
 
   test("提示词为空：报错并指向提示词", () => {

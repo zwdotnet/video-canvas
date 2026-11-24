@@ -304,7 +304,11 @@ export function planSegmentInput(args: {
   const duration = durationField(caps);
   if (duration) {
     const fit = fitDuration(duration, args.seconds);
-    if (fit.adjusted) notices.push(`片段 ${args.seconds}s 超出模型范围，按 ${fit.value}s 生成`);
+    if (fit.value < args.seconds) {
+      built.errors.duration = `片段 ${args.seconds}s 超出模型上限 ${fit.value}s`;
+    } else if (fit.adjusted) {
+      notices.push(`片段 ${args.seconds}s 超出模型范围，按 ${fit.value}s 生成`);
+    }
   }
   const images = built.input.images;
   const audios = built.input.audios;

@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { Segment } from "@/api/drama/type";
+import type { Capabilities } from "@/api/model/type";
 import { GenerateControls } from "@/pages/drama/studio/generate-controls";
 import { PromptPane } from "@/pages/drama/studio/prompt-pane";
 import { StudioContext, type Studio } from "@/pages/drama/studio/use-studio";
+import { useTasksStore } from "@/store/tasks";
+import { planSegmentInput } from "@/utils/drama/segment-input";
+import { makeTask } from "../../utils/tasks/fixtures";
 
 const seg = (patch: Partial<Segment> = {}): Segment => ({
   id: "s1",
@@ -114,6 +118,80 @@ describe("片场：提示词框撑满剩余高度", () => {
 });
 
 describe("片场：生成按钮的拦截原因", () => {
+  test("片段时长超过模型上限时禁用生成和失败重试，恢复到上限时可生成", () => {
+    const base = studio({});
+    const unsupported = { on: false, max: 0, max_mb: 0 };
+    const caps: Capabilities = {
+      ops: ["t2v"],
+      refs: { image: unsupported, video: unsupported, audio: unsupported },
+      prompt: { max_length: 200000 },
+      params: { duration: { type: "number", label: "时长", open: true, max: 10 } },
+    };
+    const renderButton = (selected: Segment) => {
+      const plan = planSegmentInput({
+        caps,
+        prompt: selected.prompt,
+        seconds: selected.seconds,
+        ratio: "",
+        overrides: {},
+        assets: [],
+      });
+      return render({ ...base, selected, plan }, <GenerateControls />);
+    };
+
+    for (const status of ["idle", "error"] as const) {
+      const html = renderButton(seg({ seconds: 15, status }));
+      expect(html).toContain("片段 15s 超出模型上限 10s");
+      expect(html).toMatch(/<button[^>]*\sdisabled=""[^>]*>立即生成/);
+    }
+    expect(renderButton(seg({ seconds: 10 }))).not.toMatch(/disabled=""[^>]*>立即生成/);
+  });
+
+  test("视频卡片已收到失败，片段快照还在生成中时立即解锁", () => {
+    const task = makeTask({ task_ref: "video-attempt", status: "failed" });
+    /** 静态渲染使用任务库的服务端初始快照。 */
+    const initial = useTasksStore.getInitialState();
+    const before = initial.tasks;
+    initial.tasks = { [task.id]: task };
+    try {
+      const html = render(
+        studio({
+          selected: seg({
+            status: "running",
+            takes: [
+              {
+                taskId: task.task_ref!,
+                status: "pending",
+                asset: null,
+                errorMessage: "",
+                createdAt: "",
+              },
+            ],
+          }),
+        }),
+        <GenerateControls />,
+      );
+      expect(html).not.toContain("这个片段正在生成");
+      expect(html).toMatch(/<button[^>]*title="开始生成这个片段的视频[^"]*"[^>]*>立即生成/);
+    } finally {
+      initial.tasks = before;
+    }
+  });
+
+  test("片段失败后可重新提交，由提交动作重新读取素材并校验", () => {
+    const value = studio({ selected: seg({ status: "error" }) });
+    const plan = { ...value.plan!, errors: { images: "预览中缺少参考图片" } };
+    const html = render({ ...value, plan }, <GenerateControls />);
+    expect(html).toMatch(/<button[^>]*title="开始生成这个片段的视频[^"]*"[^>]*>立即生成/);
+
+    const submitting = render(
+      { ...value, plan, submitting: new Set(["s1"]) },
+      <GenerateControls />,
+    );
+    expect(submitting).toContain("正在提交");
+    expect(submitting).toMatch(/<button[^>]*\sdisabled=""[^>]*>/);
+  });
+
   test("选的是原稿：H3 模型还没转写也能生成（原稿直接生成，不要求先转写）", () => {
     const html = render(studio({ selected: seg(), promptView: "source" }), <GenerateControls />);
     expect(html).not.toContain("先把原稿转写为 H3");
