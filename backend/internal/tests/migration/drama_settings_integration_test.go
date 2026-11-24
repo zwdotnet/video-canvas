@@ -11,7 +11,7 @@ import (
 
 func TestDramaSettingsMigration_BackfillsAndRetainsSource(t *testing.T) {
 	db := isolatedDB(t)
-	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsExcept(t, "0025_"), Logger: testLogger()}); err != nil {
+	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsThrough(t, "0024"), Logger: testLogger()}); err != nil {
 		t.Fatal(err)
 	}
 	for _, source := range []string{"序言\n第1集 开始\n甲\n第2集 结束\n乙", "没有标记的旧原文"} {

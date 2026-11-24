@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -66,6 +67,11 @@ type migrationFile struct {
 	noTx     bool
 }
 
+type migrationPlan struct {
+	active  []migrationFile
+	retired []migrationFile
+}
+
 type record struct {
 	Filename   string
 	Checksum   string
@@ -77,7 +83,7 @@ type record struct {
 // Run 执行全部未执行的迁移。任何一步失败都返回错误，调用方应中止启动。
 func Run(ctx context.Context, db *gorm.DB, opts Options) error {
 	opts = withDefaults(opts)
-	files, err := loadFiles(opts.FS)
+	plan, err := loadPlan(opts.FS)
 	if err != nil {
 		return err
 	}
@@ -104,13 +110,13 @@ func Run(ctx context.Context, db *gorm.DB, opts Options) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRecords(files, records, opts); err != nil {
+	if err := checkRecords(slices.Concat(plan.active, plan.retired), records, opts); err != nil {
 		return err
 	}
-	if err := adoptLegacy(ctx, conn, db, files, records, opts); err != nil {
+	if err := adoptLegacy(ctx, conn, db, plan.active, records, opts); err != nil {
 		return err
 	}
-	for _, f := range files {
+	for _, f := range plan.active {
 		if _, ok := records[f.name]; ok {
 			continue
 		}
@@ -125,10 +131,7 @@ func Run(ctx context.Context, db *gorm.DB, opts Options) error {
 
 // Status 列出每个迁移文件的执行状态，以及库里有、程序里没有的记录。只读，不建表。
 func Status(ctx context.Context, db *gorm.DB, fsys fs.FS) ([]FileStatus, error) {
-	if fsys == nil {
-		fsys = migrations.FS
-	}
-	files, err := loadFiles(fsys)
+	plan, err := loadPlan(fsys)
 	if err != nil {
 		return nil, err
 	}
@@ -153,9 +156,9 @@ func Status(ctx context.Context, db *gorm.DB, fsys fs.FS) ([]FileStatus, error) 
 		}
 	}
 
-	out := make([]FileStatus, 0, len(files))
+	out := make([]FileStatus, 0, len(plan.active))
 	known := map[string]bool{}
-	for _, f := range files {
+	for _, f := range plan.reportedFiles(records) {
 		known[f.name] = true
 		st := FileStatus{Filename: f.name}
 		if r, ok := records[f.name]; ok {
@@ -181,9 +184,6 @@ const createRecordTable = `CREATE TABLE IF NOT EXISTS schema_migrations (
 )`
 
 func withDefaults(opts Options) Options {
-	if opts.FS == nil {
-		opts.FS = migrations.FS
-	}
 	if opts.LockWait <= 0 {
 		opts.LockWait = defaultLockWait
 	}
@@ -197,6 +197,47 @@ func withDefaults(opts Options) Options {
 		opts.AppVersion = "unknown"
 	}
 	return opts
+}
+
+// loadPlan 先加载上游迁移，再加载依赖上游表结构的 NAS 存储迁移。
+func loadPlan(fsys fs.FS) (migrationPlan, error) {
+	if fsys != nil {
+		files, err := loadFiles(fsys)
+		return migrationPlan{active: files}, err
+	}
+	upstream, err := loadFiles(migrations.FS)
+	if err != nil {
+		return migrationPlan{}, err
+	}
+	storage, err := loadEmbeddedGroup("nas_storage")
+	if err != nil {
+		return migrationPlan{}, err
+	}
+	// 旧短剧迁移与上游编号重叠，保留原始文件名和内容以校验已升级的 NAS。
+	retired, err := loadEmbeddedGroup("retired_drama")
+	if err != nil {
+		return migrationPlan{}, err
+	}
+	return migrationPlan{active: append(upstream, storage...), retired: retired}, nil
+}
+
+func loadEmbeddedGroup(dir string) ([]migrationFile, error) {
+	fsys, err := fs.Sub(migrations.FS, dir)
+	if err != nil {
+		return nil, err
+	}
+	return loadFiles(fsys)
+}
+
+// reportedFiles 只展示数据库已经执行过的退役迁移。
+func (p migrationPlan) reportedFiles(records map[string]record) []migrationFile {
+	files := slices.Clone(p.active)
+	for _, f := range p.retired {
+		if _, ok := records[f.name]; ok {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // loadFiles 读取全部 .sql 迁移文件并按文件名排序；文件名不合规直接报错，不执行任何迁移。

@@ -10,5 +10,5 @@ import "embed"
 
 // FS 是全部迁移文件。
 //
-//go:embed *.sql
+//go:embed *.sql nas_storage/*.sql retired_drama/*.sql
 var FS embed.FS

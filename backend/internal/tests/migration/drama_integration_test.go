@@ -14,17 +14,32 @@ import (
 // migrationsExcept 返回内嵌迁移里去掉指定编号前缀之后的文件集合。
 func migrationsExcept(t *testing.T, prefixes ...string) fstest.MapFS {
 	t.Helper()
+	return selectMigrations(t, func(name string) bool {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(name, prefix) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// migrationsThrough 返回历史版本对应的完整迁移前缀。
+func migrationsThrough(t *testing.T, last string) fstest.MapFS {
+	t.Helper()
+	return selectMigrations(t, func(name string) bool { return name < last || strings.HasPrefix(name, last+"_") })
+}
+
+func selectMigrations(t *testing.T, keep func(string) bool) fstest.MapFS {
+	t.Helper()
 	out := fstest.MapFS{}
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-next:
 	for _, name := range names {
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(name, prefix) {
-				continue next
-			}
+		if !keep(name) {
+			continue
 		}
 		data, readErr := migrations.FS.ReadFile(name)
 		if readErr != nil {
@@ -39,15 +54,14 @@ next:
 // 角色卡表本身在 0020 才下线，所以这里只跑到 0019。
 func TestDramaMigration_Upgrade(t *testing.T) {
 	db := isolatedDB(t)
-	// 短剧迁移（0017–0019）都留给升级步骤；0020 删表更晚，也不能提前跑；0042 给 0017 建的表加列，同样留到升级步骤
-	before := migrationsExcept(t, "0017_", "0018_", "0019_", "0020_", "0025_", "0026_", "0027_", "0042_", "0047_")
+	before := migrationsThrough(t, "0016")
 	if err := migration.Run(context.Background(), db, migration.Options{FS: before, Logger: testLogger()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO character_cards (user_id, name, avatar_asset_id) VALUES (7, '母亲', 41)`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsExcept(t, "0020_", "0025_", "0026_", "0027_"), Logger: testLogger()}); err != nil {
+	if err := migration.Run(context.Background(), db, migration.Options{FS: migrationsThrough(t, "0019"), Logger: testLogger()}); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"drama_projects", "drama_episodes", "drama_jobs"} {
